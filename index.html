@@ -289,21 +289,49 @@ function renderMenu(data) {
 }
 
 // AUTH & PERSONALIZATION
-function toggleAuth() {
+async function toggleAuth() {
   if(currentUser) {
     currentUser = null;
     document.getElementById('auth-btn').textContent = 'Entrar';
     document.getElementById('user-welcome').style.display = 'none';
+    showToast('Sesión cerrada');
   } else {
-    // Mock login for demo
-    const names = ['Ángel', 'Johan', 'Bridget'];
-    currentUser = { 
-      name: names[Math.floor(Math.random()*names.length)],
-      last_area: Math.random() > 0.5 ? 'playa' : 'comedor',
-      guests: 2
-    };
-    document.getElementById('auth-btn').textContent = 'Salir';
-    showWelcome();
+    const email = prompt('Ingresa tu email para reconocer tus visitas:');
+    if(!email) return;
+    
+    showToast('Buscando tus visitas...');
+    
+    try {
+      // Buscar última reservación de este email en Supabase
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/reservaciones?name=ilike.*${email.split('@')[0]}*&order=created_at.desc&limit=1`, {
+        method: 'GET',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      const data = await res.json();
+      
+      if(data && data.length > 0) {
+        const last = data[0];
+        currentUser = { 
+          name: last.name,
+          last_area: last.area || 'comedor',
+          guests: last.guests || 2,
+          notes: last.notes || ''
+        };
+        document.getElementById('auth-btn').textContent = 'Salir (' + currentUser.name.split(' ')[0] + ')';
+        showWelcome();
+      } else {
+        // Mock fallback if no real data found yet
+        currentUser = { name: email.split('@')[0], last_area: 'playa', guests: 2 };
+        document.getElementById('auth-btn').textContent = 'Salir';
+        showWelcome();
+      }
+    } catch(e) {
+      console.error(e);
+      showToast('Error al conectar. Usando modo invitado.');
+    }
   }
 }
 
@@ -312,7 +340,8 @@ function showWelcome() {
   welcome.innerHTML = `
     👋 ¡Hola de nuevo, <strong>${currentUser.name}</strong>! 
     ¿Te gustaría tu mesa habitual en la <strong>${currentUser.last_area === 'playa' ? '🏖️ Playa' : '🏠 Comedor'}</strong> 
-    para <strong>${currentUser.guests} personas</strong>?
+    para <strong>${currentUser.guests} personas</strong>? 
+    <br><small>Hemos pre-llenado tus preferencias de tu última visita.</small>
   `;
   welcome.style.display = 'block';
   
@@ -320,6 +349,8 @@ function showWelcome() {
   const areaCard = document.querySelector(`.area-card[data-area="${currentUser.last_area}"]`);
   if(areaCard) selectArea(areaCard);
   document.getElementById('guests').value = currentUser.guests;
+  document.getElementById('name').value = currentUser.name;
+  if(currentUser.notes) document.getElementById('notes').value = currentUser.notes;
 }
 
 const tables = {
